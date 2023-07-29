@@ -37,7 +37,6 @@ def main():
         df = pd.read_csv('stock_trade_data0.csv', header=0)
         stock_pl(df, 10000000)
 
-
             
 def stock_trading():
     # Streamlit が対応している任意のオブジェクトを可視化する (ここでは文字列)
@@ -66,7 +65,14 @@ def stock_trading():
 
     #print(df)
 
+#pl_done_tf = 0 #更新の必要がない時に「現在の損益」を押しても一回取得して計算したデータを表示するだけjにするやつ　保留
+#pl_extime = datetime.datetime.now()
+
 def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買した銘柄（証券コード）,売買した数　の列を含むdf
+    today = datetime.datetime.now()
+    #if today.hour 
+    #tomorrow_9oc = datetime.datetime(today.year, today.month, today.day, 9, 0, 0) datetime.timedelta(days=)
+    #if pl_done_tf == 1 and  - datetime.datetime.now():
     pl_sum = hold_money
     #pl_sum_fee = 0
     df_purchase_pl = df_purchase #損益用に新しいdf
@@ -138,22 +144,40 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
     
     df_holding_stock = df_holding_stock.set_axis(list(range(len(df_holding_stock)))) #index(行名)を振り直す
     holding_stock_value = 0
+    df_holding_stock['now_unit'] = 0 #現在(前営業日)の株単価(終値)
+    df_holding_stock['value'] = 0 #現在の持ち株の価値(株単価*量)
     yesterday = n_bizdays_ago(1)
     for i in range(1, len(df_holding_stock)):
         df_temp = data.DataReader(df_holding_stock['Code'][i].astype('str') + '.JP', 'stooq', yesterday, yesterday)
         print(df_temp)
-        holding_stock_value += df_holding_stock['Amount'][i] * df_temp['Close'][0]
-
-    st.table(df_purchase_pl)
-    st.table(df_holding_stock)
-    st.write("Holding_money: " + str(pl_sum)) #いま持っている所持金
-    st.write("Holding_stock: " + str(holding_stock_value)) #いま持っている株の価値
+        df_holding_stock['now_unit'][i] = df_temp['Close'][0] #現在(前営業日)の株単価(終値)
+        df_holding_stock['value'][i] = df_holding_stock['Amount'][i] * df_temp['Close'][0]#現在の持ち株の価値(株単価*量)
+        holding_stock_value += df_holding_stock['value'][i]
+    
     total_assets = pl_sum + holding_stock_value
-    st.write("Total_assets: " + str(total_assets))
+
     capital_gains_tax = 0 #譲渡益税（現在の儲け(=所持金+所持株の価値が1000万を超える場合、超えた分の20%)）
     if total_assets > 10000000:
         capital_gains_tax = ((total_assets) - 10000000) * 0.2
-    st.write("capital_gains_tax: " + str(capital_gains_tax))
+
+    pl_info = pd.DataFrame({'手持金': [pl_sum],
+                            '持ち株の価値': [holding_stock_value],
+                            '資産合計': [total_assets],
+                            '譲渡益税': [capital_gains_tax]})
+    
+
+    st.table(df_purchase_pl)
+    st.table(df_holding_stock)
+    st.table(pl_info)
+    st.write("手持金: " + str(pl_sum)) #いま持っている所持金
+    st.write("持ち株の価値: " + str(holding_stock_value)) #いま持っている株の価値
+
+    st.write("資産合計: " + str(total_assets))
+    
+    st.write("譲渡益税: " + str(capital_gains_tax))
+
+    #pl_extime = datetime.datetime.now()
+    #pl_done_tf = 1
 
 
 #ref. : https://qiita.com/hid_tanabe/items/3c5e6e85c6c65f7b38be
