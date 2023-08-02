@@ -8,6 +8,8 @@ from datetime import timedelta
 import jpholiday
 import sys
 
+pd.options.display.float_format = '{:.2f}'.format#小数点以下を2桁にしたい　なぜか意味なし
+
 def main():
     with st.sidebar:
         selected = streamlit_option_menu.option_menu(menu_title=None,
@@ -23,10 +25,10 @@ def main():
             }
         )
 
-    st.title(f"サイドメニューで {selected} を選択")
+    st.title(f"{selected}")
     
     if selected == "Home":
-        st.write("ほーむぺーじだぜ")
+        st.write("株の売買，利益の確認ができます．\n")
     
     elif selected == "株の売買":
         #st.title(f"サイドメニューで {selected} を選択")
@@ -80,7 +82,7 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
                                      'Amount': [0]}) #持ち株データを保持(先頭にダミーデータ)
     #df_purchase_pl.insert(2, 'Company', '---')#会社名用
     df_purchase_pl['unit_purchase'] = 0 #終値単価ー売買時
-    df_purchase_pl['purchase'] = 0 #売買した日の終値いくら　列追加
+    df_purchase_pl['purchase'] = 0 #売買でどれだけ得たか　列追加
     #df_purchase_pl['P/L'] = 0 #昨日の終値時点での損益いくら　列追加
     df_purchase_pl['fee'] = 0 #売買時の委託手数料
     #df_purchase_pl['P/L(in_fee)'] = 0 #手数料含めて、昨日の終値時点で売った場合の損益
@@ -98,8 +100,8 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
                 df_purchase_realdata = data.DataReader(df_purchase_pl['Code'][i].astype('str') + '.JP', 'stooq', purchase_day, purchase_day)
 
                 df_purchase_pl['unit_purchase'][i] = df_purchase_realdata['Close'][0] #買った株の単価
-                df_purchase_pl['purchase'][i] = - (df_purchase_realdata['Close'][0] * df_purchase_pl['Amount'][i])
-                df_purchase_pl['fee'][i] = (df_purchase_pl['purchase'][i] * 0.005 * 1.10)
+                df_purchase_pl['purchase'][i] = - (df_purchase_realdata['Close'][0] * df_purchase_pl['Amount'][i])#購入した金額
+                df_purchase_pl['fee'][i] = (df_purchase_pl['purchase'][i] * 0.005 * 1.10)#手数料なのでマイナスだが，売り(マイナス)にかけてるのでマイナス不要
                 pl_sum += (df_purchase_pl['purchase'][i] + df_purchase_pl['fee'][i])
             
 
@@ -109,6 +111,7 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
                     print(df_holding_stock)
                 else: #いま保持していない株を買った場合、保有株データに登録
                     df_holding_stock.loc[len(df_holding_stock)] = [df_purchase_pl['Code'][i], df_purchase_pl['Amount'][i]]
+                    #dfの末尾行に追加する↑df.loc[len(df)]
                     print(df_holding_stock)
 
             else: #売ったデータの時
@@ -117,8 +120,8 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
                 df_purchase_realdata = data.DataReader(df_purchase_pl['Code'][i].astype('str') + '.JP', 'stooq', purchase_day, purchase_day)
                 #print(df_purchase_realdata)
                 df_purchase_pl['unit_purchase'][i] = df_purchase_realdata['Close'][0] #売った株の単価
-                df_purchase_pl['purchase'][i] = df_purchase_realdata['Close'][0] * df_purchase_pl['Amount'][i] #売った株の価格
-                df_purchase_pl['fee'][i] = - (df_purchase_pl['purchase'][i] * 0.005 * 1.10)
+                df_purchase_pl['purchase'][i] = df_purchase_realdata['Close'][0] * df_purchase_pl['Amount'][i] #売った株の価格（売ったのでプラス）
+                df_purchase_pl['fee'][i] = - (df_purchase_pl['purchase'][i] * 0.005 * 1.10)#手数料なのでマイナス
                 pl_sum += (df_purchase_pl['purchase'][i] + df_purchase_pl['fee'][i])
 
                 df_temp =  df_holding_stock[df_holding_stock['Code'] == df_purchase_pl['Code'][i]] #いま見ている売買データの銘柄が保持株にあるか検索してその行を抜き出す
@@ -146,12 +149,22 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
     holding_stock_value = 0
     df_holding_stock['now_unit'] = 0 #現在(前営業日)の株単価(終値)
     df_holding_stock['value'] = 0 #現在の持ち株の価値(株単価*量)
+    df_holding_stock['売ったら手数料'] = 0
+    df_holding_stock['これまでの売買による損益'] = 0
+    df_holding_stock['売った場合の損益'] = 0
     yesterday = n_bizdays_ago(1)
     for i in range(1, len(df_holding_stock)):
         df_temp = data.DataReader(df_holding_stock['Code'][i].astype('str') + '.JP', 'stooq', yesterday, yesterday)
         print(df_temp)
         df_holding_stock['now_unit'][i] = df_temp['Close'][0] #現在(前営業日)の株単価(終値)
         df_holding_stock['value'][i] = df_holding_stock['Amount'][i] * df_temp['Close'][0]#現在の持ち株の価値(株単価*量)
+        df_holding_stock['売ったら手数料'][i] = - (df_holding_stock['value'][i] * 0.005 * 1.10)
+        df_temp2 = df_purchase_pl[df_purchase_pl['Code'] == df_holding_stock['Code'][i]]#いま見ている持ち株の売買履歴を持ってくる
+        df_temp2 = df_temp2.set_axis(list(range(len(df_temp2))))#インデックス(行番号)振り直し
+        print(df_temp2)
+        for j in range(len(df_temp2)):
+            df_holding_stock['これまでの売買による損益'][i] += (df_temp2['purchase'][j] + df_temp2['fee'][j])
+        df_holding_stock['売った場合の損益'][i] = df_holding_stock['value'][i] + df_holding_stock['売ったら手数料'][i] + df_holding_stock['これまでの売買による損益'][i]
         holding_stock_value += df_holding_stock['value'][i]
     
     total_assets = pl_sum + holding_stock_value
@@ -169,12 +182,10 @@ def stock_pl(df_purchase, hold_money): #売買日付、売か買か、売買し�
     st.table(df_purchase_pl)
     st.table(df_holding_stock)
     st.table(pl_info)
-    st.write("手持金: " + str(pl_sum)) #いま持っている所持金
-    st.write("持ち株の価値: " + str(holding_stock_value)) #いま持っている株の価値
-
-    st.write("資産合計: " + str(total_assets))
-    
-    st.write("譲渡益税: " + str(capital_gains_tax))
+    #st.write("手持金: " + str(pl_sum)) #いま持っている所持金
+    #st.write("持ち株の価値: " + str(holding_stock_value)) #いま持っている株の価値
+    #st.write("資産合計: " + str(total_assets))
+    #st.write("譲渡益税: " + str(capital_gains_tax))
 
     #pl_extime = datetime.datetime.now()
     #pl_done_tf = 1
